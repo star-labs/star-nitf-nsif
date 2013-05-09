@@ -18,6 +18,25 @@
  * License along with this program; if not, If not,
  * see <http://www.gnu.org/licenses/>.
  *
+ *
+ * @file test_text_write.c
+ *
+ * @author Carl Sandaker
+ *
+ * @date 9. may 2013
+ *
+ * @brief write a nitf 2.1 file
+ *
+ * @details Takes in a jpeg image and geodata, creates a correctly formatted nitf 2.1 file
+ *
+ *   ______    _________        _          _______
+ * .' ____ \  |  _   _  |      / \        |_   __ \
+ * | (___ \_| |_/ | | \_|     / _ \         | |__) |
+ *  _.____`.      | |        / ___ \        |  __ /
+ * | \____) | _  _| |_  _  _/ /   \ \_  _  _| |  \ \_  _
+ *  \______.'(_)|_____|(_)|____| |____|(_)|____| |___|(_)
+ *
+ * System for Tactical Aerial Reconnaissance
  */
 
 #include <stdio.h>
@@ -35,15 +54,17 @@ static const char* const DATE_TIME = "20120126000000";
 static
 NITF_BOOL initializeHeader(nitf_FileHeader* header, nitf_Error* error)
 {
-    return (nitf_Field_setString(header->fileHeader, "NITF", error) &&
-            nitf_Field_setString(header->fileVersion, "02.10", error) &&
-            nitf_Field_setUint32(header->complianceLevel, 3, error) &&
-            nitf_Field_setString(header->systemType, "BF01", error) &&
-            nitf_Field_setString(header->originStationID, "SF.net", error) &&
-            nitf_Field_setString(header->fileDateTime, DATE_TIME, error) &&
-            nitf_Field_setString(header->fileTitle, "Text Segment Test", error) &&
-            nitf_Field_setString(header->classification, "U", error) &&
-            nitf_Field_setUint32(header->encrypted, 0, error));
+    return (
+    		nitf_Field_setString(header->fileHeader, "NITF", error) && // NITF or NSIF
+            nitf_Field_setString(header->fileVersion, "02.10", error) && // 02.10 for NITF, 01.00 for NSIF
+            nitf_Field_setUint32(header->complianceLevel, 3, error) && // Level of complexity required to read file
+            nitf_Field_setString(header->systemType, "BF01", error) && // BF01
+            nitf_Field_setString(header->originStationID, "STAR", error) && // ID of sender / creator
+            nitf_Field_setString(header->fileDateTime, DATE_TIME, error) && // CCYYMMDDhhmmss, should be dynamically loaded
+            nitf_Field_setString(header->fileTitle, "Text Segment Test", error) && // title of file
+            nitf_Field_setString(header->classification, "U", error) && // U=Unclassified
+            nitf_Field_setUint32(header->encrypted, 0, error) // 0=unencrypted, 1=encrypted
+            );
 }
 
 static
@@ -52,6 +73,20 @@ NITF_BOOL initializeTextSubheader(nitf_TextSubheader* header,
 {
     return (nitf_Field_setString(header->dateTime, DATE_TIME, error) &&
             nitf_Field_setString(header->title, "Text Segment Test", error));
+}
+
+static
+NITF_BOOL initializeImageSubheader(nitf_ImageSubheader* header,
+								  nitf_Error* error)
+{
+	return (
+			nitf_Field_setString(header->imageMode, "IM", error) && // Set to IM to indicate Image Subheader
+			nitf_Field_setString(header->imageId, "IMA001", error) && // Image ID should be auto-incremented or dynamically loaded
+			nitf_Field_setString(header->imageSecurityClass, "U", error) && // Image Security Class, U=Unclassified
+			nitf_Field_setUint32(header->encrypted, 0, error) && // 0=unencrypted
+			nitf_Field_setString(header->numRows, "00000768", error) && // Number of rows of pixels in the image (height)
+			nitf_Field_setString(header->numCols, "00001024", error) // Number of columns of pixels in the image (width)
+			);
 }
 
 int main(int argc, char** argv)
