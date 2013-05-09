@@ -50,6 +50,7 @@
 ** ********************************************************************/
 
 static const char* const DATE_TIME = "20120126000000";
+static const char* const IGEOLO = "+37.160+067.461+37.085+069.142+36.013+069.058+36.085+067.399";
 
 static
 NITF_BOOL initializeHeader(nitf_FileHeader* header, nitf_Error* error)
@@ -80,13 +81,30 @@ NITF_BOOL initializeImageSubheader(nitf_ImageSubheader* header,
 								  nitf_Error* error)
 {
 	return (
-			nitf_Field_setString(header->imageMode, "IM", error) && // Set to IM to indicate Image Subheader
+			nitf_Field_setString(header->filePartType, "IM", error) && // Set to IM to indicate Image Subheader
 			nitf_Field_setString(header->imageId, "IMA001", error) && // Image ID should be auto-incremented or dynamically loaded
 			nitf_Field_setString(header->imageSecurityClass, "U", error) && // Image Security Class, U=Unclassified
 			nitf_Field_setUint32(header->encrypted, 0, error) && // 0=unencrypted
 			nitf_Field_setString(header->numRows, "00000768", error) && // Number of rows of pixels in the image (height)
-			nitf_Field_setString(header->numCols, "00001024", error) // Number of columns of pixels in the image (width)
-			);
+			nitf_Field_setString(header->numCols, "00001024", error) && // Number of columns of pixels in the image (width)
+			nitf_Field_setString(header->pixelValueType, "INT", error) && // Pixel value type
+			nitf_Field_setString(header->imageRepresentation, "MONO", error) && // Processing required to view an image
+			nitf_Field_setString(header->imageCategory, "VIS", error) && // VIS=Visual imagery
+			nitf_Field_setString(header->actualBitsPerPixel, "08", error) && // Actual bits-per-pixel per band, 01-96
+			nitf_Field_setString(header->pixelJustification, "R", error) && // Pixel justification, L or R
+			nitf_Field_setString(header->imageLocation, IGEOLO, error) && // IGEOLO -  Image Geographic Location, approximate geographic location of image, not intended for analytical purposes +-dd.ddd+-ddd.ddd (four times) or ddmmssXdddmmssY (four times)
+			nitf_Field_setUint32(header->imageComments, 0, error) && // Number of following image comments fields. 0-9.
+			nitf_Field_setString(header->imageCompression, "C3", error) && // NC=image not compressed, C3=JPEG, C5=Lossless JPEG, I1=downsampled JPEG
+			nitf_Field_setUint32(header->numImageBands, 1, error) && // Number of bands, corresponds to imageRepresentation field. MONO=1, RGB=3
+			// start bands (1 band for monochrome, 3 bands for RGB)
+			nitf_Field_setString(header->bandInfo, "M", error) && // band representation?? (i hope) M=Monochrome
+			// end of bands
+			nitf_Field_setString(header->imageMode, "P", error) && // B=Band Interleaved by Block, P=Band interleaved by pixel, R=Band interleaved by row, S=Band sequential - Look this up!
+			nitf_Field_setUint32(header->numBlocksPerRow, 1, error) && // Number of image blocks in a row of blocks. If image consists of a single block
+			nitf_Field_setUint32(header->numBlocksPerCol, 1, error) &&
+			nitf_Field_setUint32(header->numPixelsPerHorizBlock, 1024, error) &&
+			nitf_Field_setUint32(header->numPixelsPerVertBlock, 768, error)
+	);
 }
 
 int main(int argc, char** argv)
