@@ -52,14 +52,9 @@
 static const char* const DATE_TIME = "20120126000000";
 static const char* const IGEOLO = "+37.160+067.461+37.085+069.142+36.013+069.058+36.085+067.399";
 
-/*
-nitf_TRE *tre = nitf_TRE_construct("BLOCKA", NULL, &error);
-    if (!tre)
-    {
-        nitf_Error_print(&error, stdout, "Exiting...");
-        exit(EXIT_FAILURE);
-    }
-*/
+
+
+
 
 static
 NITF_BOOL initializeHeader(nitf_FileHeader* header, nitf_Error* error)
@@ -77,6 +72,7 @@ NITF_BOOL initializeHeader(nitf_FileHeader* header, nitf_Error* error)
             );
 }
 
+/*
 static
 NITF_BOOL initializeTextSubheader(nitf_TextSubheader* header,
                                   nitf_Error* error)
@@ -84,6 +80,7 @@ NITF_BOOL initializeTextSubheader(nitf_TextSubheader* header,
     return (nitf_Field_setString(header->dateTime, DATE_TIME, error) &&
             nitf_Field_setString(header->title, "Text Segment Test", error));
 }
+*/
 
 static
 NITF_BOOL initializeImageSubheader(nitf_ImageSubheader* header,
@@ -111,26 +108,35 @@ NITF_BOOL initializeImageSubheader(nitf_ImageSubheader* header,
 			nitf_Field_setString(header->imageMode, "P", error) && // B=Band Interleaved by Block, P=Band interleaved by pixel, R=Band interleaved by row, S=Band sequential - Look this up!
 			nitf_Field_setUint32(header->numBlocksPerRow, 1, error) && // Number of image blocks in a row of blocks. If image consists of a single block
 			nitf_Field_setUint32(header->numBlocksPerCol, 1, error) &&
-			nitf_Field_setUint32(header->numPixelsPerHorizBlock, 1024, error) &&
-			nitf_Field_setUint32(header->numPixelsPerVertBlock, 768, error)
+			nitf_Field_setUint32(header->numPixelsPerHorizBlock, 1024, error) && // If an image is one block, this will be the pixel width of the image
+			nitf_Field_setUint32(header->numPixelsPerVertBlock, 768, error) // If an image is one block, this will be the pixel height of the image
 	);
 }
-/*
+
+/* We'll implement the BLOCKA TRE last, if everything else works
 static
 NITF_BOOL initializeBlockaSubheader(nitf_BlockingInfo* header, nitf_Error* error)
 {
+	nitf_TRE *tre = nitf_TRE_construct("BLOCKA", NULL, &error);
+			if (!tre)
+			{
+				nitf_Error_print(&error, stdout, "Exiting...");
+				exit(EXIT_FAILURE);
+			}
 	return (
-
+			nitf_TRE_setField(tre, )
 	)
 }
 */
+
 int main(int argc, char** argv)
 {
     const char* outText = NULL;
     const char* outPathname = NULL;
     nitf_IOHandle outIO = NRT_INVALID_HANDLE_VALUE;
     nitf_Writer* writer = NULL;
-    nitf_TextSegment* textSegment = NULL;
+    // nitf_TextSegment* textSegment = NULL;
+    nitf_ImageSegment* imageSegment = NULL;
     nitf_SegmentWriter* textWriter = NULL;
     nitf_SegmentSource* textSource = NULL;
     nitf_Record* record = NULL;
@@ -175,15 +181,32 @@ int main(int argc, char** argv)
         goto CATCH_ERROR;
     }
 
+    /*
     textSegment = nitf_Record_newTextSegment(record, &error);
     if (!textSegment)
     {
         fprintf(stderr, "new text segment failed\n");
         return 1;
     }
+    */
+    /*
     if (!initializeTextSubheader(textSegment->subheader, &error))
     {
         goto CATCH_ERROR;
+    }
+    */
+    /*
+     * Carl's code follows
+     */
+    imageSegment = nitf_Record_newImageSegment(record, &error);
+    if(!imageSegment)
+    {
+    	fprintf(stderr, "new image segment failed\n");
+    	return 1;
+    }
+    if (!initializeImageSubheader(imageSegment->subheader, &error))
+    {
+    	goto CATCH_ERROR;
     }
 
     if (!nitf_Writer_prepare(writer, record, outIO, &error))
