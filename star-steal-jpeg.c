@@ -1,0 +1,312 @@
+/*
+ * This example demonstrates how to read in a JPEG compressed file
+ * and turn it into a NITF.  In order to do this, we have to bypass
+ * the default image writer.  Luckily, that's easy enough to do using
+ * a WriteHandler, which we define in this file
+ */
+
+#include <import/nitf.h>
+#include <jpeglib.h>
+
+
+NITF_BOOL populateFileHeader(nitf_Record *record, const char* title,
+                             nitf_Error *error)
+{
+    /* the file header is already created, so just grab it */
+    nitf_FileHeader *header = record->header;
+
+    /* populate some fields */
+    if (!nitf_Field_setString(header->fileHeader, "NITF", error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setString(header->fileVersion, "02.10", error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setUint32(header->complianceLevel, 3, error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setString(header->systemType, "BF01", error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setString(header->originStationID, "SF.net", error))
+        goto CATCH_ERROR;
+    /* fake the date */
+    if (!nitf_Field_setString(header->fileDateTime, "20080812000000", error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setString(header->fileTitle, title, error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setString(header->classification, "U", error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setUint32(header->encrypted, 0, error))
+        goto CATCH_ERROR;
+
+    return NITF_SUCCESS;
+
+  CATCH_ERROR:
+    return NITF_FAILURE;
+}
+
+
+NITF_BOOL addImageSegment(nitf_Record *record, 
+                          const char* jfif, 
+                          nitf_Error *error)
+{
+    nitf_ImageSegment *segment = NULL;
+    nitf_ImageSubheader *header = NULL;
+    nitf_BandInfo **bands = NULL;
+
+    /* JPEG libarry setup */
+    struct jpeg_error_mgr jerr;
+    struct jpeg_decompress_struct cinfo;
+
+    FILE* jstream = fopen(jfif, "r+b");
+    if (jstream == NULL)
+    {
+        nitf_Error_init(error, 
+                        NITF_STRERROR( NITF_ERRNO ),
+                        NITF_CTXT,
+                        NITF_ERR_INVALID_PARAMETER);
+        return NITF_FAILURE;
+    }
+
+    
+    /*  Set up the error handler  */
+    cinfo.err = jpeg_std_error(&jerr);
+
+    /*  Tell our info struct to be decompression  */
+    jpeg_create_decompress(&cinfo);
+
+    /*  Bind up our source location */
+    jpeg_stdio_src(&cinfo, jstream);
+
+    if (jpeg_read_header(&cinfo, 0) != JPEG_HEADER_OK)
+    {
+        nitf_Error_init(error,
+                        "Failed to read JPEG header", 
+                        NITF_CTXT,
+                        NITF_ERR_INVALID_OBJECT);
+        fclose(jstream);
+        return NITF_FAILURE;
+    }
+
+    segment = nitf_Record_newImageSegment(record, error);
+    if (!segment)
+        goto CATCH_ERROR;
+
+    /* grab the subheader */
+    header = segment->subheader;
+
+    /* populate some fields */
+    if (!nitf_Field_setString(header->filePartType, "IM", error))
+        goto CATCH_ERROR;
+
+    if (!nitf_Field_setString(header->imageId, "NITRO-JPEG", error))
+        goto CATCH_ERROR;
+
+    if (!nitf_Field_setString(header->imageDateAndTime, 
+                              "20080812000000", 
+                              error))
+        goto CATCH_ERROR;
+
+    if (!nitf_Field_setString(header->imageSecurityClass, "U", error))
+        goto CATCH_ERROR;
+
+    if (!nitf_Field_setUint32(header->encrypted, 0, error))
+        goto CATCH_ERROR;
+
+    /* create a BandInfo buffer for one band! */
+    bands = (nitf_BandInfo **) NITF_MALLOC(sizeof(nitf_BandInfo *));
+    if (bands == NULL)
+    {
+        nitf_Error_init(error, NITF_STRERROR(NITF_ERRNO),
+                        NITF_CTXT, NITF_ERR_MEMORY);
+        goto CATCH_ERROR;
+    }
+
+
+    bands[0] = nitf_BandInfo_construct(error);
+    if (!bands[0])
+        goto CATCH_ERROR;
+
+    if (!nitf_BandInfo_init(bands[0],
+                            "M",
+                            "",
+                            "N",
+                            "",
+                            0,
+                            0,
+                            NULL,
+                            error))
+        goto CATCH_ERROR;
+
+    /* set the pixel information */
+    if (!nitf_ImageSubheader_setPixelInformation(header,
+                                                 "INT",
+                                                 8,
+                                                 8,
+                                                 "R",
+                                                 "MONO",
+                                                 "VIS",
+                                                 1,
+                                                 bands,
+                                                 error))
+        goto CATCH_ERROR;
+
+    if (nitf_ImageSubheader_insertImageComment(header, 
+                                               "JPEG NITF generated by NITRO",
+                                                0, error) < 0)
+        goto CATCH_ERROR;
+
+    if (!nitf_Field_setString(header->imageCompression, "C3", error))
+        goto CATCH_ERROR;
+
+    if (!nitf_Field_setString(header->compressionRate, "0.00", error))
+        goto CATCH_ERROR;
+
+    /* set the blocking info */
+    if (!nitf_ImageSubheader_setBlocking(header,
+                                         cinfo.image_height,
+                                         cinfo.image_width,
+                                         cinfo.image_height,
+                                         cinfo.image_width,
+                                         "P",
+                                         error))
+        goto CATCH_ERROR;
+
+
+    if (!nitf_Field_setString(header->imageMagnification, "1.00", error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setUint32(header->imageDisplayLevel, 1, error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setUint32(header->imageAttachmentLevel, 0, error))
+        goto CATCH_ERROR;
+    if (!nitf_Field_setUint32(header->imageLocation, 0, error))
+        goto CATCH_ERROR;
+
+    fclose(jstream);
+    return NITF_SUCCESS;
+
+  CATCH_ERROR:
+    if (jstream) fclose(jstream);
+    return NITF_FAILURE;
+}
+
+
+NITF_BOOL writeNITF(nitf_Record *record,
+                    const char* input,
+                    const char* output, 
+                    nitf_Error *error)
+{
+    nitf_IOHandle out;
+    nitf_Writer *writer = NULL;
+    nitf_WriteHandler* codeStream = NULL;
+    nitf_IOHandle in;
+    nitf_IOInterface* io = NULL;
+
+    /* create the IOHandle */
+    in = nitf_IOHandle_create(input, NITF_ACCESS_READONLY,
+                              NITF_OPEN_EXISTING, error);
+    
+    if (NITF_INVALID_HANDLE(in))
+        goto CATCH_ERROR;
+
+
+    io = nitf_IOHandleAdaptor_construct(in, error);
+
+    out = nitf_IOHandle_create(output, NITF_ACCESS_WRITEONLY,
+                               NITF_CREATE, error);
+
+    if (NITF_INVALID_HANDLE(out))
+        goto CATCH_ERROR;
+
+    writer = nitf_Writer_construct(error);
+    if (!writer)
+        goto CATCH_ERROR;
+
+    /* prepare the writer to write this record */
+    if (!nitf_Writer_prepare(writer, record, out, error))
+        goto CATCH_ERROR;
+
+    codeStream = 
+        nitf_StreamIOWriteHandler_construct(io, 0, 
+                                            nitf_IOHandle_getSize(in, error),
+                                            error);
+    if (!codeStream)
+        goto CATCH_ERROR;
+
+    if (!nitf_Writer_setImageWriteHandler(writer, 0, codeStream, error))
+        goto CATCH_ERROR;
+
+    /* finally, write it! */
+    if (!nitf_Writer_write(writer, error))
+    {
+        nitf_Error_print(error, stderr, "Error writing up write");
+        exit(1);
+    }
+
+    /* cleanup */
+    nitf_IOHandle_close(in);
+    nitf_IOHandle_close(out);
+    nitf_Writer_destruct(&writer);
+    return NITF_SUCCESS;
+
+  CATCH_ERROR:
+    if (codeStream) nitf_WriteHandler_destruct(&codeStream);
+    if (io) nitf_IOInterface_destruct(&io);
+    if (writer) nitf_Writer_destruct(&writer);
+    return NITF_FAILURE;
+}
+
+
+
+int main(int argc, char **argv)
+{
+
+    nitf_Record *record = NULL;
+    nitf_Error error;
+    char* jfif;
+    char* ntf;
+    if (argc != 3)
+    {
+        printf("Usage: %s <jpeg> <nitf>\n", argv[0]);
+        goto CATCH_ERROR;
+    }
+    jfif = argv[1];
+    ntf = argv[2];
+
+    /* first, we need to create a new Record */
+    record = nitf_Record_construct(NITF_VER_21, &error);
+    if (!record)
+    {
+        nitf_Error_print(&error, stderr, "While constructing record...");
+        goto CATCH_ERROR;
+    }
+
+    /* let's populate the file header */
+    if (!populateFileHeader(record, jfif, &error))
+    {
+        nitf_Error_print(&error, stderr, "While populating file header...");
+        goto CATCH_ERROR;
+    }
+
+    /* now, add an image segment to the record */
+    if (!addImageSegment(record, jfif, &error))
+    {
+        nitf_Error_print(&error, stderr, "While adding image segment...");
+        goto CATCH_ERROR;
+    }
+
+    /* now we should have the record ready to go... so let's write it! */
+    if (!writeNITF(record, jfif, ntf, &error))
+    {
+        nitf_Error_print(&error, stderr, "While trying to write...");
+        goto CATCH_ERROR;
+    }
+
+    printf("Successfully wrote NITF: %s\n", ntf);
+
+    /* cleanup! */
+    nitf_Record_destruct(&record);
+
+    return 0;
+
+  CATCH_ERROR:
+    if (record) nitf_Record_destruct(&record);
+    return 1;
+}
